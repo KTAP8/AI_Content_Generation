@@ -1,0 +1,177 @@
+{
+  "name": "Tevox - Data Webhooks",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "GET", "path": "products", "responseMode": "responseNode", "options": {} },
+      "id": "wh-get-products", "name": "GET /products", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 160]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, category, brand, description, sku, created_at FROM products ORDER BY name ASC;",
+        "options": {}
+      },
+      "id": "pg-list-products", "name": "PG: List Products", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 160],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-products", "name": "Respond: Products", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 160]
+    },
+
+    {
+      "parameters": { "httpMethod": "POST", "path": "products", "responseMode": "responseNode", "options": {} },
+      "id": "wh-post-products", "name": "POST /products", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 340]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO products (name, category, brand, description, sku) VALUES ($1, $2, $3, $4, $5) RETURNING *;",
+        "additionalFields": {
+          "queryParams": "={{ [$json.body.name, $json.body.category, $json.body.brand, $json.body.description, $json.body.sku] }}"
+        },
+        "options": {}
+      },
+      "id": "pg-create-product", "name": "PG: Create Product", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 340],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, product: $json }) }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-create-product", "name": "Respond: Create Product", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 340]
+    },
+
+    {
+      "parameters": { "httpMethod": "DELETE", "path": "products/:id", "responseMode": "responseNode", "options": {} },
+      "id": "wh-delete-product", "name": "DELETE /products/:id", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM products WHERE id = {{ $json.params.id }};",
+        "options": {}
+      },
+      "id": "pg-delete-product", "name": "PG: Delete Product", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 500],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true }",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-delete-product", "name": "Respond: Delete Product", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 500]
+    },
+
+    {
+      "parameters": { "httpMethod": "GET", "path": "guidelines", "responseMode": "responseNode", "options": {} },
+      "id": "wh-get-guidelines", "name": "GET /guidelines", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 680]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, key, value, updated_at FROM brand_guidelines ORDER BY key ASC;",
+        "options": {}
+      },
+      "id": "pg-list-guidelines", "name": "PG: List Guidelines", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 680],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-guidelines", "name": "Respond: Guidelines", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 680]
+    },
+
+    {
+      "parameters": { "httpMethod": "POST", "path": "guidelines", "responseMode": "responseNode", "options": {} },
+      "id": "wh-post-guidelines", "name": "POST /guidelines", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 860]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO brand_guidelines (key, value, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW() RETURNING *;",
+        "additionalFields": {
+          "queryParams": "={{ [$json.body.key, $json.body.value] }}"
+        },
+        "options": {}
+      },
+      "id": "pg-upsert-guideline", "name": "PG: Upsert Guideline", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 860],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, guideline: $json }) }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-upsert-guideline", "name": "Respond: Upsert Guideline", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 860]
+    },
+
+    {
+      "parameters": { "httpMethod": "GET", "path": "history", "responseMode": "responseNode", "options": {} },
+      "id": "wh-get-history", "name": "GET /history", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 1040]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ch.id, ch.product_id, p.name AS product_name, ch.marketing_objective, ch.tiktok_script, ch.instagram_caption, ch.visual_direction, ch.created_at FROM content_history ch LEFT JOIN products p ON p.id = ch.product_id ORDER BY ch.created_at DESC LIMIT 20;",
+        "options": {}
+      },
+      "id": "pg-list-history", "name": "PG: List History", "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5, "position": [460, 1040],
+      "credentials": { "postgres": { "name": "Tevox PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($input.all().map(i => i.json)) }}",
+        "options": { "responseHeaders": { "entries": [{ "name": "Access-Control-Allow-Origin", "value": "*" }] } }
+      },
+      "id": "res-history", "name": "Respond: History", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1, "position": [680, 1040]
+    }
+  ],
+  "connections": {
+    "GET /products": { "main": [[{ "node": "PG: List Products", "type": "main", "index": 0 }]] },
+    "PG: List Products": { "main": [[{ "node": "Respond: Products", "type": "main", "index": 0 }]] },
+    "POST /products": { "main": [[{ "node": "PG: Create Product", "type": "main", "index": 0 }]] },
+    "PG: Create Product": { "main": [[{ "node": "Respond: Create Product", "type": "main", "index": 0 }]] },
+    "DELETE /products/:id": { "main": [[{ "node": "PG: Delete Product", "type": "main", "index": 0 }]] },
+    "PG: Delete Product": { "main": [[{ "node": "Respond: Delete Product", "type": "main", "index": 0 }]] },
+    "GET /guidelines": { "main": [[{ "node": "PG: List Guidelines", "type": "main", "index": 0 }]] },
+    "PG: List Guidelines": { "main": [[{ "node": "Respond: Guidelines", "type": "main", "index": 0 }]] },
+    "POST /guidelines": { "main": [[{ "node": "PG: Upsert Guideline", "type": "main", "index": 0 }]] },
+    "PG: Upsert Guideline": { "main": [[{ "node": "Respond: Upsert Guideline", "type": "main", "index": 0 }]] },
+    "GET /history": { "main": [[{ "node": "PG: List History", "type": "main", "index": 0 }]] },
+    "PG: List History": { "main": [[{ "node": "Respond: History", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["automotive", "data-api"],
+  "meta": { "templateCredsSetupCompleted": false }
+}

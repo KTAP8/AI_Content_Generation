@@ -1,0 +1,206 @@
+{
+  "name": "Tevox - Content Generation v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-content",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Generate Content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, category, brand, description, sku FROM products WHERE id = {{ $json.body.product_id }} LIMIT 1;",
+        "options": {}
+      },
+      "id": "pg-fetch-product",
+      "name": "PostgreSQL: Fetch Product",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": { "name": "Tevox PostgreSQL" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT key, value FROM brand_guidelines ORDER BY key;",
+        "options": {}
+      },
+      "id": "pg-fetch-guidelines",
+      "name": "PostgreSQL: Fetch Brand Guidelines",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": { "name": "Tevox PostgreSQL" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const product = $('PostgreSQL: Fetch Product').item.json;\nconst guidelinesRows = $('PostgreSQL: Fetch Brand Guidelines').all().map(i => i.json);\nconst body = $('Webhook: Generate Content').item.json.body;\n\nconst guidelines = {};\nguidelinesRows.forEach(row => { guidelines[row.key] = row.value; });\n\nconst guidelinesText = Object.entries(guidelines)\n  .map(([k, v]) => `${k.toUpperCase()}: ${v}`)\n  .join('\\n');\n\nconst systemPrompt = `You are an expert social media content creator for an automotive car mods and imports brand targeting the JDM and import car enthusiast scene.\n\nBRAND GUIDELINES:\n${guidelinesText}\n\nPRODUCT DETAILS:\nName: ${product.name}\nCategory: ${product.category || 'N/A'}\nBrand: ${product.brand || 'N/A'}\nDescription: ${product.description || 'N/A'}\n\nYou have access to a web search tool. Use it to search for current trending content related to this product before generating content.\n\nAfter researching trends, respond ONLY with valid JSON (no markdown, no code blocks):\n{\n  \"tiktok_script\": \"Full 60-second TikTok script with [HOOK] (0-3s), [BODY] (3-50s), [CTA] (50-60s) sections labeled\",\n  \"instagram_caption\": \"Caption with emojis, line breaks, and relevant hashtags at the end\",\n  \"visual_direction\": \"Camera angles, lighting mood, props, outfit/styling, location, and editing style suggestions\"\n}`;\n\nconst userPrompt = `Create social media content for: ${product.name}\n\nMarketing Objective: ${body.marketing_objective}\n\nFirst search for: \"${product.name} ${product.category} automotive TikTok trend 2025\" to find current trends, then generate the content.`;\n\nreturn [{\n  json: {\n    systemPrompt,\n    userPrompt,\n    product_id: product.id,\n    marketing_objective: body.marketing_objective,\n    session_id: String(product.id)\n  }\n}];"
+      },
+      "id": "build-agent-prompt",
+      "name": "Code: Build Agent Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userPrompt }}",
+        "options": {
+          "systemMessage": "={{ $json.systemPrompt }}"
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "modelName": "gemini-2.0-flash",
+        "options": {
+          "temperature": 0.85
+        }
+      },
+      "id": "gemini-model",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [980, 520],
+      "credentials": {
+        "googlePalmApi": { "name": "Google Gemini API" }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Code: Build Agent Prompt').item.json.session_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "window-memory",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [1120, 520]
+    },
+    {
+      "parameters": {
+        "name": "search_automotive_trends",
+        "description": "Search Google for current automotive trends, TikTok content ideas, and social media buzz related to car mods and imports. Input should be a search query string.",
+        "method": "POST",
+        "url": "https://google.serper.dev/search",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            { "name": "X-API-KEY", "value": "6bd85198ab8c3c913bce5549e7b1b8259a071c5531fb2d6958e511493610d7dc" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={\"q\": \"{query}\", \"num\": 5}",
+        "optimizeResponse": true
+      },
+      "id": "serper-tool",
+      "name": "Serper Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [1260, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "const agentOutput = $input.item.json.output;\nconst prev = $('Code: Build Agent Prompt').item.json;\n\nlet cleaned = (agentOutput || '').trim();\n\n// Strip markdown code fences if present\nif (cleaned.startsWith('```')) {\n  cleaned = cleaned.replace(/^```json?\\n?/, '').replace(/\\n?```$/, '').trim();\n}\n\nlet parsed;\ntry {\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);\n} catch (e) {\n  parsed = {\n    tiktok_script: agentOutput || 'Parse error',\n    instagram_caption: 'Parse error — see raw output',\n    visual_direction: 'Parse error — see raw output'\n  };\n}\n\nreturn [{\n  json: {\n    tiktok_script: parsed.tiktok_script || '',\n    instagram_caption: parsed.instagram_caption || '',\n    visual_direction: parsed.visual_direction || '',\n    product_id: prev.product_id,\n    marketing_objective: prev.marketing_objective\n  }\n}];"
+      },
+      "id": "parse-output",
+      "name": "Code: Parse Agent Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO content_history (product_id, marketing_objective, tiktok_script, instagram_caption, visual_direction) VALUES ($1, $2, $3, $4, $5) RETURNING id;",
+        "additionalFields": {
+          "queryParams": "={{ [$json.product_id, $json.marketing_objective, $json.tiktok_script, $json.instagram_caption, $json.visual_direction] }}"
+        },
+        "options": {}
+      },
+      "id": "pg-save-history",
+      "name": "PostgreSQL: Save to History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": { "name": "Tevox PostgreSQL" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, data: { tiktok_script: $('Code: Parse Agent Output').item.json.tiktok_script, instagram_caption: $('Code: Parse Agent Output').item.json.instagram_caption, visual_direction: $('Code: Parse Agent Output').item.json.visual_direction, history_id: $json.id } }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Content-Type", "value": "application/json" }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Generate Content": {
+      "main": [[{ "node": "PostgreSQL: Fetch Product", "type": "main", "index": 0 }]]
+    },
+    "PostgreSQL: Fetch Product": {
+      "main": [[{ "node": "PostgreSQL: Fetch Brand Guidelines", "type": "main", "index": 0 }]]
+    },
+    "PostgreSQL: Fetch Brand Guidelines": {
+      "main": [[{ "node": "Code: Build Agent Prompt", "type": "main", "index": 0 }]]
+    },
+    "Code: Build Agent Prompt": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "Serper Search Tool": {
+      "ai_tool": [[{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "Code: Parse Agent Output", "type": "main", "index": 0 }]]
+    },
+    "Code: Parse Agent Output": {
+      "main": [[{ "node": "PostgreSQL: Save to History", "type": "main", "index": 0 }]]
+    },
+    "PostgreSQL: Save to History": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["automotive", "content-generation", "ai-agent"],
+  "meta": { "templateCredsSetupCompleted": false }
+}
