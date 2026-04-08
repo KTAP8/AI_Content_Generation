@@ -3,10 +3,10 @@ import { getProducts, generateContent } from '../api/client'
 import HistoryDrawer from '../components/HistoryDrawer'
 
 const LOADING_STEPS = [
-  'Fetching product details',
-  'Researching live trends',
-  'Merging brand guidelines',
-  'Generating with AI',
+  { label: 'Fetching product details',  color: 'bg-zinc-400' },
+  { label: 'Researching live trends',   color: 'bg-sky-400' },
+  { label: 'Merging brand guidelines',  color: 'bg-amber-400' },
+  { label: 'Generating with AI',        color: 'bg-red-400' },
 ]
 
 const PRESETS = [
@@ -29,10 +29,13 @@ function CopyButton({ text }) {
           setTimeout(() => setCopied(false), 2000)
         })
       }}
-      className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400
-                 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+      className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+        copied
+          ? 'border-emerald-700 text-emerald-400 bg-emerald-950/30'
+          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100'
+      }`}
     >
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? '✓ Copied' : 'Copy'}
     </button>
   )
 }
@@ -83,8 +86,9 @@ function UserMessage({ children }) {
   return (
     <div className="flex justify-end">
       <div
-        className="max-w-sm px-4 py-2.5 rounded-2xl rounded-tr-sm bg-zinc-800
-                   text-zinc-100 text-sm leading-relaxed border border-zinc-700/50"
+        className="max-w-sm px-4 py-2.5 rounded-2xl rounded-tr-sm text-zinc-100
+                   text-sm leading-relaxed border border-red-900/30"
+        style={{ background: 'oklch(16% 0.025 20)' }}
       >
         {children}
       </div>
@@ -145,6 +149,7 @@ function ProductWidget({ products, loading, onSelect }) {
 // ─── Typing / thinking indicator ──────────────────────────────────────────────
 
 function ThinkingIndicator({ step }) {
+  const current = LOADING_STEPS[step]
   return (
     <AiMessage>
       <div className="flex items-center gap-3 py-1">
@@ -152,12 +157,12 @@ function ThinkingIndicator({ step }) {
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="w-1.5 h-1.5 rounded-full bg-red-500 dot-bounce"
+              className={`w-1.5 h-1.5 rounded-full dot-bounce ${current.color}`}
               style={{ animationDelay: `${i * 0.18}s` }}
             />
           ))}
         </div>
-        <span className="text-xs text-zinc-500">{LOADING_STEPS[step]}</span>
+        <span className="text-xs text-zinc-500">{current.label}</span>
       </div>
     </AiMessage>
   )
@@ -165,15 +170,34 @@ function ThinkingIndicator({ step }) {
 
 // ─── Tabbed content output ────────────────────────────────────────────────────
 
+const TAB_CONFIG = {
+  tiktok: {
+    label: 'TikTok Script',
+    active: 'text-red-400 border-red-500',
+    bg: 'bg-red-950/10',
+  },
+  instagram: {
+    label: 'Instagram',
+    active: 'text-violet-400 border-violet-500',
+    bg: 'bg-violet-950/10',
+  },
+  visual: {
+    label: 'Visual Direction',
+    active: 'text-amber-400 border-amber-500',
+    bg: 'bg-amber-950/10',
+  },
+}
+
 function ContentResult({ data }) {
   const [tab, setTab] = useState('tiktok')
 
   const tabs = [
-    { id: 'tiktok', label: 'TikTok Script', content: data.tiktok_script },
-    { id: 'instagram', label: 'Instagram', content: data.instagram_caption, charLimit: 2200 },
-    { id: 'visual', label: 'Visual Direction', content: data.visual_direction },
+    { id: 'tiktok',    content: data.tiktok_script },
+    { id: 'instagram', content: data.instagram_caption, charLimit: 2200 },
+    { id: 'visual',    content: data.visual_direction },
   ]
   const active = tabs.find((t) => t.id === tab)
+  const config = TAB_CONFIG[tab]
 
   return (
     <div className="mt-3 border border-zinc-800 rounded-xl overflow-hidden">
@@ -185,17 +209,17 @@ function ContentResult({ data }) {
             onClick={() => setTab(t.id)}
             className={`px-4 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
               tab === t.id
-                ? 'text-white border-red-500'
-                : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:border-zinc-600'
+                ? TAB_CONFIG[t.id].active
+                : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:border-zinc-700'
             }`}
           >
-            {t.label}
+            {TAB_CONFIG[t.id].label}
           </button>
         ))}
       </div>
 
-      {/* Content area */}
-      <div className="p-4 max-h-72 overflow-y-auto bg-zinc-900/20">
+      {/* Content area — tinted per platform */}
+      <div className={`p-4 max-h-72 overflow-y-auto transition-colors ${config.bg}`}>
         {tab === 'tiktok' ? (
           formatTikTokScript(active.content)
         ) : (
